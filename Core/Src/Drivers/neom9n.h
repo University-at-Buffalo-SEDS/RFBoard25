@@ -26,4 +26,21 @@ const uint8_t PORT_ID_SPI = 4; //spi com port number for polling configs
 const uint16_t UBX_PACKET_HEADER_SIZE = 6; //1(8) + 1(8) + 1(8) + 1(8) + 2(16)
 const uint16_t UBX_PACKET_FOOTER_SIZE = 2; //2 checksum bytes
 
+typedef struct NeoGPSConfig_t {
+	SPI_HandleTypeDef spi_port;
+	GPIO_TypeDef *cs_pin_port;
+	uint16_t cs_pin;
+} NeoGPSConfig_t;
+
+typedef struct {
+	uint8_t class;
+	uint8_t id;
+	uint8_t length;
+	uint8_t *payload;
+	uint16_t payload_length;
+	uint8_t checksumA;
+	uint8_t checksumB;
+	//uint8_t
+} UBX_Packet_t;
+
 #endif /* SRC_DRIVERS_NEOM9N_H_ */
