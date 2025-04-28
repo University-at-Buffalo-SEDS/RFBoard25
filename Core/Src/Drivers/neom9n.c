@@ -1,14 +1,8 @@
 #include "main.h"
+#include "neom9n.h"
 
 //INTERFACE DESCRIPTION:
 //https://content.u-blox.com/sites/default/files/u-blox-M9-SPG-4.04_InterfaceDescription_UBX-21022436.pdf?utm_content=UBX-21022436
-
-//sync characters
-const uint8_t UBX_PSYNC_1 = 0xB5; //Preamble sync char 1
-const uint8_t UBX_PSYNC_2 = 0x62; //Preamble sync char 2
-
-const uint16_t UBX_PACKET_HEADER_SIZE = 6; //1(8) + 1(8) + 1(8) + 1(8) + 2(16)
-const uint16_t UBX_PACKET_FOOTER_SIZE = 2; //2 checksum bytes
 
 typedef struct NeoGPSConfig_t {
 	SPI_HandleTypeDef spi_port;
@@ -33,6 +27,33 @@ static void cs_low(NeoGPSConfig_t *config) {
 
 static void cs_high(NeoGPSConfig_t *config) {
 	HAL_GPIO_WritePin(config->cs_pin_port, config->cs_pin, GPIO_PIN_SET);
+}
+
+void calculateChecksum(UBX_Packet_t *packet, uint8_t *tx, uint16_t tx_size) {
+	packet->checksumA = 0;
+	packet->checksumB = 0;
+
+	for (int i = 0; i < tx_size; i++) {
+		packet->checksumA += tx[i];
+		packet->checksumB += packet->checksumA;
+	}
+}
+
+/*
+ * To check if the device is connected,
+ * we check the port settings of some
+ * port to see if we get a valid result.
+ */
+void isConnected(NeoGPSConfig_t *config, uint16_t maxWait) {
+	UBX_Packet_t packet;
+	packet.class = UBX_CLASS_CFG; //configuration
+	packet.id = UBX_CFG_PRT; 	  //Polls the configuration for one I/O port
+	packet.length = 1;
+
+	//create the payload
+	uint8_t payload = PORT_ID_SPI;
+
+	packet.payload = &payload;
 }
 
 void sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing) {
@@ -60,6 +81,9 @@ void sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing) {
 
 	tx[footer_start] = outgoing->checksumA;
 	tx[footer_start + 1] = outgoing->checksumB;
+
+	//calculate the checksum
+	calculateChecksum(outgoing, tx, tx_size);
 
 	cs_low(config); //begin the transmission
 	HAL_SPI_Transmit(config->spi_port, tx, tx_size);
