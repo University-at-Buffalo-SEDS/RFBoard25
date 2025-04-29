@@ -11,6 +11,7 @@ RM := rm -rf
 -include sources.mk
 -include Drivers/STM32G4xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
+-include Core/Src/Drivers/subdir.mk
 -include Core/Src/subdir.mk
 -include objects.mk
 
@@ -60,8 +61,8 @@ all: main-build
 main-build: RFBoard25.elf secondary-outputs
 
 # Tool invocations
-RFBoard25.elf RFBoard25.map: $(OBJS) $(USER_OBJS) C:\Users\fredd\STM32CubeIDE\workspace_1.16.1\RFBoard25\STM32G491CETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "RFBoard25.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\fredd\STM32CubeIDE\workspace_1.16.1\RFBoard25\STM32G491CETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="RFBoard25.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+RFBoard25.elf RFBoard25.map: $(OBJS) $(USER_OBJS) C:\Users\fredd\Documents\GitHub\RFBoard25\STM32G491CETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "RFBoard25.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\fredd\Documents\GitHub\RFBoard25\STM32G491CETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="RFBoard25.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

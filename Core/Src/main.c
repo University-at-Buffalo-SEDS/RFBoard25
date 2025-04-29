@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,7 +36,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define PRINT_BUFFER_SIZE 256
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -70,7 +70,14 @@ static void MX_USB_PCD_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void debug_print(const char *format, ...) {
+	char buf[PRINT_BUFFER_SIZE];
+	va_list args;
+	va_start(args, format);
+	int n = vsprintf(buf, format, args);
+	uint8_t status = CDC_Transmit_FS(buf, n);
+	va_end(args);
+}
 /* USER CODE END 0 */
 
 /**
