@@ -78,12 +78,21 @@ static bool isValidClass(uint8_t class_byte) {
 	class_byte == UBX_CLASS_RXM ||
 	class_byte == UBX_CLASS_SEC ||
 	class_byte == UBX_CLASS_TIM ||
-	class_byte == UBX_CLASS_UPD
+	class_byte == UBX_CLASS_UPD0
 	) {
 		return true;
 	} else {
 		return false;
 	}
+}
+
+static bool isValidCFGByte(uint8_t cfg_byte) {
+	for (int i = 0; i < sizeof(LOOKUP_UBX_CFG); i++) {
+		if (cfg_byte == LOOKUP_UBX_CFG[i]) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /*
@@ -97,7 +106,7 @@ static bool isValidClass(uint8_t class_byte) {
 bool processSpiByte(uint8_t incoming, UBX_Packet_t *incoming_packet, uint16_t frame_count) {
 	if (frame_count == 0) {
 		if (incoming == UBX_PSYNC_1) { //psync_1 (b5) is the beginning of a ubx message
-			return true;
+			debug_print("PSYNC_1 | ");
 		} else if (incoming == '$') { //$ is the beginning of a nmea message (see interface document page 21)
 			//cur_incoming_type = INCOMING_TYPE_NMEA;
 			debug_print("== WARNING: DRIVER DOES NOT SUPPORT NMEA ==\r\n");
@@ -107,19 +116,43 @@ bool processSpiByte(uint8_t incoming, UBX_Packet_t *incoming_packet, uint16_t fr
 			return false;
 		}
 	} else if (frame_count == 1) {
-		if (incoming == UBX_PSYNC_2) { //psync_2 is the second header byte of a ubx message
-			return true;
+		if (incoming == UBX_PSYNC_2) {
+			//psync_2 is the second header byte of a ubx message
+			debug_print("PSYNC_2 | ");
 		} else {
 			return false;
 		}
 	} else if (frame_count == 2) { //should be the class, store it in the given struct
 		if (isValidClass(inncoming) == true) {
 			incoming_packet->class = incoming;
-			return true;
+			debug_print("CLS %02x | ", incoming);
 		} else {
 			return false;
 		}
+	} else if (frame_count == 3) { //should be the id
+		debug_print("ID %02x | ", incoming);
+		incoming_packet->id = incoming;
+	} else if (frame_count == 4) { //length LSB
+		//do this in reverse
+		incoming_packet->length = incoming;
+	} else if (frame_count == 5) { //length msb
+		incoming_packet->length |= incoming << 8;
+	} else if (frame_count > 5) { //this is either the payload of the checksum
+		if (frame_count < 6+incoming_packet->length) { //this is part of the payload
+			incoming_packet->payload[frame_count-6] = incoming;
+		} else { //these are the checksum
+			if (frame_count == 6 + incoming_packet->length) {
+				incoming_packet->checksumA = incoming;
+			} else if (frame_count == 7 + incoming_packet->length){
+				incoming_packet->checksumB = incoming;
+			} else {
+				return false;
+			}
+		}
+	} else {
+		return false; //invalid frame_count (not sure why this would happen)
 	}
+	return true;
 }
 
 /*

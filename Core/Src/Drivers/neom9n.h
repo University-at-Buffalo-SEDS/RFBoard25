@@ -67,6 +67,21 @@ const uint8_t UBX_CFG_VALDEL = 0x8C;    // Used for config of higher version u-b
 const uint8_t UBX_CFG_VALGET = 0x8B;    // Used for config of higher version u-blox modules (ie protocol v27 and above). Configuration Items
 const uint8_t UBX_CFG_VALSET = 0x8A;    // Used for config of higher version u-blox modules (ie protocol v27 and above). Sets values corresponding to provided key-value pairs/ provided key-value pairs within a transaction.
 
+const uint8_t LOOKUP_UBX_CFG[] = {
+		UBX_CFG_ANT, UBX_CFG_BATCH, UBX_CFG_CFG,
+		UBX_CFG_DAT, UBX_CFG_DGNSS, UBX_CFG_ESFALG,
+		UBX_CFG_ESFA, UBX_CFG_ESFG, UBX_CFG_GEOFENCE,
+		UBX_CFG_GNSS, UBX_CFG_HNR, UBX_CFG_INF,
+		UBX_CFG_ITEM, UBX_CFG_LOGFILTER, UBX_CFG_MSG,
+		UBX_CFG_NAV5, UBX_CFG_NAVX5, UBX_CFG_NMEA,
+		UBX_CFG_ODO, UBX_CFG_PM2, UBX_CFG_PMS,
+		UBX_CFG_PRT, UBX_CFG_PWR, UBX_CFG_RATE,
+		UBX_CFG_RINV, UBX_CFG_RST, UBX_CFG_RXM,
+		UBX_CFG_SBAS, UBX_CFG_TMODE3,
+		UBX_CFG_TP5, UBX_CFG_USB, UBX_CFG_VALDEL,
+		UBX_CFG_VALGET, UBX_CFG_VALSET
+};
+
 const uint8_t PORT_ID_SPI = 4; //spi com port number for polling configs
 
 const uint16_t UBX_PACKET_HEADER_SIZE = 6; //1(8) + 1(8) + 1(8) + 1(8) + 2(16)
