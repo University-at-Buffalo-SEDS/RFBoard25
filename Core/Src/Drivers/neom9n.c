@@ -276,13 +276,13 @@ void test_poll(NeoGPSConfig_t *config, uint32_t max_wait) {
 
 	uint8_t tx[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF};
 
-	tx[5] = UBX_PSYNC_1;
-	tx[6] = UBX_PSYNC_2;
+	tx[0] = UBX_PSYNC_1;
+	tx[1] = UBX_PSYNC_2;
 
-	tx[7] = UBX_CLASS_CFG;
-	tx[8] = UBX_CFG_PRT;
-	tx[9] = 1 & 0xFF; //LSB OF LENGTH,
-	tx[10] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
+	tx[2] = UBX_CLASS_CFG;
+	tx[3] = UBX_CFG_PRT;
+	tx[4] = 1 & 0xFF; //LSB OF LENGTH,
+	tx[5] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
 
 
 
