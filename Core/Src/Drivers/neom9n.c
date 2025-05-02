@@ -1,37 +1,11 @@
-#include "main.h"
-#include "neom9n.h"
-#include <stdbool.h>
+#include "Drivers/neom9n.h"
 
 //INTERFACE DESCRIPTION:
 //https://content.u-blox.com/sites/default/files/u-blox-M9-SPG-4.04_InterfaceDescription_UBX-21022436.pdf?utm_content=UBX-21022436
 
-ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, uint16_t max_wait);
+ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, uint32_t max_wait);
 
-ublox_status_e waitForAck(UBX_Packet_t  *outgoing, uint16_t max_wait);
-ublox_status_e waitForNoAck(UBX_Packet_t  *outgoing, uint16_t max_wait);
-
-#define SPI_RX_BUFFER_SIZE 128
-
-uint8_t spi_rx_buffer[SPI_RX_BUFFER_SIZE];
-uint8_t spi_buffer_index = 0; //currently occupied bytes of spi rx buffer
-
-//todo make this actually print something
-static void print_HAL_Status(HAL_StatusTypeDef status) {
-	switch (status) {
-	case HAL_OK:
-		debug_print("HAL_OK");
-		break;
-	case HAL_ERROR:
-		debug_print("HAL_ERROR");
-		break;
-	case HAL_BUSY:
-		debug_print("HAL_BUSY");
-		break;
-	case HAL_TIMEOUT:
-		debug_print("HAL_TIMEOUT");
-		break;
-	}
-}
+#define SPI_RX_BUFFER_SIZE 128*4//128
 
 static void cs_low(NeoGPSConfig_t *config) {
 	HAL_GPIO_WritePin(config->cs_pin_port, config->cs_pin, GPIO_PIN_RESET);
@@ -52,50 +26,6 @@ void calculateChecksum(UBX_Packet_t *packet, uint8_t *tx, uint16_t tx_size) {
 }
 
 /*
- * const uint8_t UBX_CLASS_ACK =   0x05;
-const uint8_t UBX_CLASS_CFG = 	0x06; //Class for configuration packets
-const uint8_t UBX_CLASS_INF =   0x04;
-const uint8_t UBX_CLASS_LOG =   0x21;
-const uint8_t UBX_CLASS_MGA =   0x13;
-const uint8_t UBX_CLASS_MON =   0x0a;
-const uint8_t UBX_CLASS_NAV =   0x01;
-const uint8_t UBX_CLASS_RXM =   0x02;
-const uint8_t UBX_CLASS_SEC =   0x27;
-const uint8_t UBX_CLASS_TIM =   0x0d;
-const uint8_t UBX_CLASS_UPD =   0x09;
- */
-
-
-static bool isValidClass(uint8_t class_byte) {
-	if (
-	class_byte == UBX_CLASS_ACK ||
-	class_byte == UBX_CLASS_CFG ||
-	class_byte == UBX_CLASS_INF ||
-	class_byte == UBX_CLASS_LOG ||
-	class_byte == UBX_CLASS_MGA ||
-	class_byte == UBX_CLASS_MON ||
-	class_byte == UBX_CLASS_NAV ||
-	class_byte == UBX_CLASS_RXM ||
-	class_byte == UBX_CLASS_SEC ||
-	class_byte == UBX_CLASS_TIM ||
-	class_byte == UBX_CLASS_UPD0
-	) {
-		return true;
-	} else {
-		return false;
-	}
-}
-
-static bool isValidCFGByte(uint8_t cfg_byte) {
-	for (int i = 0; i < sizeof(LOOKUP_UBX_CFG); i++) {
-		if (cfg_byte == LOOKUP_UBX_CFG[i]) {
-			return true;
-		}
-	}
-	return false;
-}
-
-/*
  * Process a byte from the spi buffer and return true if a valid byte was processsed
  * based on the given frame_count
  *
@@ -103,7 +33,8 @@ static bool isValidCFGByte(uint8_t cfg_byte) {
  * HEADER | Class | ID | Length | Payload | CK_A | CK_B |
  * 0    1   2       3    4    5   6         6+n    7+n
  */
-bool processSpiByte(uint8_t incoming, UBX_Packet_t *incoming_packet, uint16_t frame_count) {
+bool processSpiByte(uint8_t incoming, UBX_Packet_t *incoming_packet) {
+	uint16_t frame_count = incoming_packet->recv_counter;
 	if (frame_count == 0) {
 		if (incoming == UBX_PSYNC_1) { //psync_1 (b5) is the beginning of a ubx message
 			debug_print("PSYNC_1 | ");
@@ -123,12 +54,8 @@ bool processSpiByte(uint8_t incoming, UBX_Packet_t *incoming_packet, uint16_t fr
 			return false;
 		}
 	} else if (frame_count == 2) { //should be the class, store it in the given struct
-		if (isValidClass(inncoming) == true) {
-			incoming_packet->class = incoming;
-			debug_print("CLS %02x | ", incoming);
-		} else {
-			return false;
-		}
+		incoming_packet->class = incoming;
+		debug_print("CLS %02x | ", incoming);
 	} else if (frame_count == 3) { //should be the id
 		debug_print("ID %02x | ", incoming);
 		incoming_packet->id = incoming;
@@ -161,91 +88,58 @@ bool processSpiByte(uint8_t incoming, UBX_Packet_t *incoming_packet, uint16_t fr
  * incoming to the outgoing (id and class of incoming
  * should match the outgoing)
  */
-bool checkAndProcessSPIBuffer(UBX_Packet_t *outgoing, UBX_Packet_t *incoming_packet) {
+void checkAndProcessSPIBuffer(UBX_Packet_t *outgoing, uint8_t *rx_buf, uint16_t rx_size, UBX_Packet_t *incoming_packet) {
 	//overhead for processspibyte
-	incoming_packet_type_e cur_incoming_type = INCOMING_TYPE_NONE;
-	uint16_t cur_incoming_frame_count = 0;
-
-	for(int i = 0; i < spi_buffer_index; i++) {
-		if (processSpiByte(spi_rx_buffer[i], incoming_packet, cur_incoming_frame_count) == true) {
-			cuur_incoming_frame_count ++;;
+	for(int i = 0; i < rx_size; i++) {
+		debug_print("(%02x)", rx_buf[i]);
+		if (processSpiByte(rx_buf[i], incoming_packet) == true) {
+			incoming_packet->recv_counter ++;;
 		} else {
-			return false; //one of the bytes we are reading is invalid
-			//processspibyte will print a debug message if necessary
+			debug_print("processing spi byte failed.\n");
 		}
+		HAL_Delay(100);
 	}
-	spi_buffer_index = 0;
 }
 
 //ACK MESSAGE IS IN THE FORMAT HEADER | CLASS (0X05) | ID (0X01 FOR ACK 0X00 FOR NOT ACK) | len | payload | checksum
-ublox_status_e waitForAck(UBX_Packet_t  *outgoing, uint16_t max_wait) {
+bool waitForAck(UBX_Packet_t  *outgoing, uint8_t *rx_buf, uint16_t rx_size, uint32_t max_wait) {
 	//we don't actually need to wait like in the arduino driver, because the stm32 hal functions are all blocking
 	//with a given timeout.
-	if (checkAndProcessSPIBuffer(outgoing) == true) { // See if new data is available. Process bytes as they come in.
-		return (UBLOX_STATUS_DATA_RECEIVED); // We received valid data and a correct ACK!
+	UBX_Packet_t incoming_packet;
+	incoming_packet.recv_counter = 0;
+	HAL_Delay(1000);
+	debug_print("doing wait for ack...\r\n");
+	HAL_Delay(1000);
+	checkAndProcessSPIBuffer(outgoing, rx_buf, rx_size, &incoming_packet); // See if new data is available. Process bytes as they come in.
+
+	//now we should check if the stuff in incoming_packet is valid.
+
+	if (incoming_packet.class == outgoing->class) {
+		debug_print("Classes match!\n");
 	} else {
-		return UBLOX_STATUS_TIMEOUT;
+		debug_print("Classes don't match.\n");
+		return false;
 	}
-	//}
+
+	if (incoming_packet.id == outgoing->id) {
+		debug_print("Ids match!\n");
+	} else {
+		debug_print("Ids don't match.\n");
+		return false;
+	}
+
+	return true;
 }
-/*
-sfe_ublox_status_e SFE_UBLOX_GNSS::waitForACKResponse(ubxPacket *outgoingUBX, uint8_t requestedClass, uint8_t requestedID, uint16_t maxTime)
-{
-	if (checkUbloxInternal(outgoingUBX, requestedClass, requestedID) == true) // See if new data is available. Process bytes as they come in.
-	{
-	  if ((outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && (outgoingUBX->valid == SFE_UBLOX_PACKET_VALIDITY_VALID) && (outgoingUBX->cls == requestedClass) && (outgoingUBX->id == requestedID))
-	  {
-		return (SFE_UBLOX_STATUS_DATA_RECEIVED); // We received valid data and a correct ACK!
-	  }
-	  else if ((outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED) && (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID))
-	  {
-		return (SFE_UBLOX_STATUS_DATA_SENT); // We got an ACK but no data...
-	  }
-	  else if ((outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && ((outgoingUBX->cls != requestedClass) || (outgoingUBX->id != requestedID)))
-	  {
-		return (SFE_UBLOX_STATUS_DATA_OVERWRITTEN); // Data was valid but has been or is being overwritten
-	  }
-	  else if ((packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && (outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_NOT_VALID) && (outgoingUBX->valid == SFE_UBLOX_PACKET_VALIDITY_NOT_VALID))
-	  {
-		return (SFE_UBLOX_STATUS_CRC_FAIL); // Checksum fail
-	  }
-	  else if (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_NOTACKNOWLEDGED)
-	  {
-		return (SFE_UBLOX_STATUS_COMMAND_NACK); // We received a NACK!
-	  }
-	  else if ((outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_NOT_VALID) && (outgoingUBX->valid == SFE_UBLOX_PACKET_VALIDITY_VALID) && (outgoingUBX->cls == requestedClass) && (outgoingUBX->id == requestedID))
-	  {
-		return (SFE_UBLOX_STATUS_DATA_RECEIVED); // We received valid data and an invalid ACK!
-	  }
-	  else if ((outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_NOT_VALID) && (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_NOT_VALID))
-	  {
-		return (SFE_UBLOX_STATUS_FAIL); // We received invalid data and an invalid ACK!
-	  }
 
-	} // checkUbloxInternal == true
-
-	delay(1); // Allow an RTOS to get an elbow in (#11)
-
-	// We have timed out...
-	// If the outgoingUBX->classAndIDmatch is VALID then we can take a gamble and return DATA_RECEIVED
-	// even though we did not get an ACK
-	if ((outgoingUBX->classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_VALID) && (packetAck.classAndIDmatch == SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED) && (outgoingUBX->valid == SFE_UBLOX_PACKET_VALIDITY_VALID) && (outgoingUBX->cls == requestedClass) && (outgoingUBX->id == requestedID))
-	{
-	return (SFE_UBLOX_STATUS_DATA_RECEIVED); // We received valid data... But no ACK!
-	}
-	return (SFE_UBLOX_STATUS_TIMEOUT);
-}*/
-
-
-ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, uint16_t max_wait) {
-	spi_buffer_index = 0; //start at beginning of buffer
+ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, uint32_t max_wait) {
 	//start with header bytes
 	//determine size of
+	debug_print("Running sendspicommand...\r\n");
 	uint16_t tx_size = UBX_PACKET_HEADER_SIZE +
-			   outgoing->payload_length +
+			   outgoing->length +
 			   UBX_PACKET_FOOTER_SIZE;
 
-	uint8_t tx[tx_size];
+	uint8_t tx[tx_size*2];
 
 	tx[0] = UBX_PSYNC_1;
 	tx[1] = UBX_PSYNC_2;
@@ -255,44 +149,72 @@ ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, ui
 	tx[4] = outgoing->length & 0xFF; //LSB OF LENGTH,
 	tx[5] = outgoing->length >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
 
-	for (int i = 0; i < outgoing->payload_length; i++) {
+	HAL_Delay(1000);
+	debug_print("Set headers, setting payload of length %d...\r\n", outgoing->length);
+	HAL_Delay(1000);
+	for (int i = 0; i < outgoing->length; i++) {
 		tx[UBX_PACKET_HEADER_SIZE + i] = outgoing->payload[i];
 	}
-
-	int footer_start = UBX_PACKET_HEADER_SIZE + outgoing->payload_length;
+	HAL_Delay(1000);
+	debug_print("Set payload.\r\n");
+	int footer_start = UBX_PACKET_HEADER_SIZE + outgoing->length;
 
 	tx[footer_start] = outgoing->checksumA;
 	tx[footer_start + 1] = outgoing->checksumB;
 
+	HAL_Delay(1000);
+	debug_print("Created tx buffer, calculating checksum:\r\n");
 	//calculate the checksum
 	calculateChecksum(outgoing, tx, tx_size);
+	HAL_Delay(1000);
+	debug_print("Calculated checksum, filling end of tx and beginning of rx...\r\n");
+	HAL_Delay(500);
 
-	uint8_t rx_buf[SPI_RX_BUFFER_SIZE];
+	uint8_t rx_buf[tx_size*2];
 
-	cs_low(config); //begin the transmission
-	HAL_StatusTypeDef result = HAL_SPI_TransmitReceive(config->spi_port, tx, rx_buf, tx_size, max_wait);
-	cs_high(config); //end the transaction
-
-	//should put the rx data into the global spi rx buffer
-	for (int i = 0; i < tx_size; i++) {
-		spi_rx_buffer[spi_buffer_index] = rx_buf[i];
-		spi_buffer_index++;
+	for(int i = 0; i < tx_size; i++) {
+		tx[tx_size+i] = 0xFF;
+		//rx_buf[i] = 0xFF;
 	}
 
-	print_HAL_Status(result);
+	HAL_Delay(500);
+	debug_print("Done filling. Begin transaction...\r\n");
 
-	sfe_ublox_status_e ret = UBLOX_STATUS_SUCCESS;
+	cs_low(config); //begin the transmission
+	HAL_StatusTypeDef res = HAL_SPI_TransmitReceive(config->spi_port, tx, rx_buf, tx_size*2, max_wait);
+	cs_high(config); //end the transaction
+	HAL_Delay(1000);
+	debug_print("Spi transaction over (%02x). Parsing results...\r\n", res);
+	HAL_Delay(1000);
+	debug_print("Debug printing rx and tx buffers:\r\n");
+	HAL_Delay(500);
+	debug_print("TX: ");
+	for(int i = 0; i < tx_size*2; i++) {
+		HAL_Delay(100);
+		debug_print(" |%02x| ", tx[i]);
+	}
+	HAL_Delay(500);
+	debug_print("\r\nRX: ");
+	for(int i = 0; i < tx_size*2; i++) {
+		HAL_Delay(100);
+		debug_print(" |%02x| ", rx_buf[i]);
+	}
+	//print_HAL_Status(result);
 
+	//sfe_ublox_status_e ret = UBLOX_STATUS_SUCCESS;
+	//bool ret = false;
 	//we may need to look for ACK depnding on type of command
 	if (outgoing->class == UBX_CLASS_CFG) {
 		//call waitforack here which should return some sort of status
-		ret = waitForAck(outgoing, max_wait);
+		waitForAck(outgoing, rx_buf, tx_size*2, max_wait);
 	} else {
-		ret = waitForNoAck(outgoing, max_wait);
+		//waitForNoAck(outgoing, max_wait);
 	}
+
+	return UBLOX_STATUS_DATA_RECEIVED;
 }
 
-bool getSPIPortSettings(NeoGPSConfig_t *config, uint16_t max_wait)
+bool getSPIPortSettings(NeoGPSConfig_t *config, uint32_t max_wait)
 {
 	UBX_Packet_t packet;
 	packet.class = UBX_CLASS_CFG;
@@ -303,6 +225,8 @@ bool getSPIPortSettings(NeoGPSConfig_t *config, uint16_t max_wait)
 
 	packet.payload = &payload;
 
+	debug_print("Set up port settings poll packet, sending command:\r\n");
+	HAL_Delay(1000);
 	return ((sendSPICommand(config, &packet, max_wait)) == UBLOX_STATUS_DATA_RECEIVED); // We are expecting data and an ACK
 }
 
@@ -311,7 +235,8 @@ bool getSPIPortSettings(NeoGPSConfig_t *config, uint16_t max_wait)
  * we check the SPI port settings of some
  * port to see if we get a valid result.
  */
-bool isConnected(NeoGPSConfig_t *config, uint16_t max_wait) {
+bool isConnected(NeoGPSConfig_t *config, uint32_t max_wait) {
+	debug_print("Checking connection...\r\n");
 	return getSPIPortSettings(config, max_wait);
 }
 
@@ -338,15 +263,65 @@ bool SFE_UBLOX_GNSS::setPortOutput(uint8_t portID, uint8_t outStreamSettings, ui
 }
  */
 
-bool setSPIOutputModeToUBX(uint16_t max_wait) {
-	if (getPortSettings(portID, maxWait) == false)
-	    return (false); // Something went wrong. Bail.
+bool setSPIOutputModeToUBX(uint32_t max_wait) {
+	//if (getPortSettings(PORT_ID_SPI, max_wait) == false)
+	//    return (false); // Something went wrong. Bail.
+	return false;
 }
 
-bool neom9n_begin(NeoGPSConfig_t *config, uint16_t max_wait) {
+void test_poll(NeoGPSConfig_t *config, uint32_t max_wait) {
+	HAL_Delay(500);
+	debug_print("Starting test polling...");
+	HAL_Delay(500);
+
+	uint8_t tx[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF};
+
+	tx[5] = UBX_PSYNC_1;
+	tx[6] = UBX_PSYNC_2;
+
+	tx[7] = UBX_CLASS_CFG;
+	tx[8] = UBX_CFG_PRT;
+	tx[9] = 1 & 0xFF; //LSB OF LENGTH,
+	tx[10] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
+
+
+
+	uint8_t rx[SPI_RX_BUFFER_SIZE];
+
+	while(1) {
+		debug_print("POLLING...");
+		cs_low(config);
+		HAL_SPI_TransmitReceive(config->spi_port, tx, rx, SPI_RX_BUFFER_SIZE, max_wait);
+		cs_high(config);
+		HAL_Delay(100);
+		debug_print("Transaction done.\r\n");
+		HAL_Delay(100);
+		debug_print("Debug printing rx and tx buffers:\r\n");
+		HAL_Delay(100);
+		debug_print("TX: ");
+		for(int i = 0; i < SPI_RX_BUFFER_SIZE; i++) {
+			HAL_Delay(10);
+			debug_print(" |%02x| ", tx[i]);
+		}
+		HAL_Delay(100);
+		debug_print("\r\nRX: ");
+		for(int i = 0; i < SPI_RX_BUFFER_SIZE; i++) {
+			HAL_Delay(10);
+			debug_print(" |%02x| ", rx[i]);
+		}
+		HAL_Delay(100);
+		debug_print("\r\nDone. Waiting 5 seconds...\r\n");
+		HAL_Delay(5000);
+	}
+}
+
+bool neom9n_begin(NeoGPSConfig_t *config, uint32_t max_wait) {
+	debug_print("Beginning...\r\n");
+	HAL_Delay(2000);
 	cs_high(config);
 
 	bool connected = isConnected(config, max_wait);
+	test_poll(config, max_wait);
 	//we should ideally attempt to connect a few times
 	return connected;
 }
