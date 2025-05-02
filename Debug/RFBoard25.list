@@ -37,11 +37,11 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  000229c1  00000000  00000000  00031671  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0001f1f6  00000000  00000000  00054032  2**0
+ 17 .debug_line   0001f1f4  00000000  00000000  00054032  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000cd06d  00000000  00000000  00073228  2**0
+ 18 .debug_str    000cd06d  00000000  00000000  00073226  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  00140295  2**0
+ 19 .comment      00000043  00000000  00000000  00140293  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00006788  00000000  00000000  001402d8  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -1367,37 +1367,37 @@ void test_poll(NeoGPSConfig_t *config, uint32_t max_wait) {
  8000c1c:	461a      	mov	r2, r3
  8000c1e:	f009 fbc5 	bl	800a3ac <memcpy>
 
-	tx[5] = UBX_PSYNC_1;
+	tx[0] = UBX_PSYNC_1;
  8000c22:	f507 6382 	add.w	r3, r7, #1040	@ 0x410
  8000c26:	f5a3 7302 	sub.w	r3, r3, #520	@ 0x208
  8000c2a:	22b5      	movs	r2, #181	@ 0xb5
- 8000c2c:	715a      	strb	r2, [r3, #5]
-	tx[6] = UBX_PSYNC_2;
+ 8000c2c:	701a      	strb	r2, [r3, #0]
+	tx[1] = UBX_PSYNC_2;
  8000c2e:	f507 6382 	add.w	r3, r7, #1040	@ 0x410
  8000c32:	f5a3 7302 	sub.w	r3, r3, #520	@ 0x208
  8000c36:	2262      	movs	r2, #98	@ 0x62
- 8000c38:	719a      	strb	r2, [r3, #6]
+ 8000c38:	705a      	strb	r2, [r3, #1]
 
-	tx[7] = UBX_CLASS_CFG;
+	tx[2] = UBX_CLASS_CFG;
  8000c3a:	f507 6382 	add.w	r3, r7, #1040	@ 0x410
  8000c3e:	f5a3 7302 	sub.w	r3, r3, #520	@ 0x208
  8000c42:	2206      	movs	r2, #6
- 8000c44:	71da      	strb	r2, [r3, #7]
-	tx[8] = UBX_CFG_PRT;
+ 8000c44:	709a      	strb	r2, [r3, #2]
+	tx[3] = UBX_CFG_PRT;
  8000c46:	f507 6382 	add.w	r3, r7, #1040	@ 0x410
  8000c4a:	f5a3 7302 	sub.w	r3, r3, #520	@ 0x208
  8000c4e:	2200      	movs	r2, #0
- 8000c50:	721a      	strb	r2, [r3, #8]
-	tx[9] = 1 & 0xFF; //LSB OF LENGTH,
+ 8000c50:	70da      	strb	r2, [r3, #3]
+	tx[4] = 1 & 0xFF; //LSB OF LENGTH,
  8000c52:	f507 6382 	add.w	r3, r7, #1040	@ 0x410
  8000c56:	f5a3 7302 	sub.w	r3, r3, #520	@ 0x208
  8000c5a:	2201      	movs	r2, #1
- 8000c5c:	725a      	strb	r2, [r3, #9]
-	tx[10] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
+ 8000c5c:	711a      	strb	r2, [r3, #4]
+	tx[5] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
  8000c5e:	f507 6382 	add.w	r3, r7, #1040	@ 0x410
  8000c62:	f5a3 7302 	sub.w	r3, r3, #520	@ 0x208
  8000c66:	2200      	movs	r2, #0
- 8000c68:	729a      	strb	r2, [r3, #10]
+ 8000c68:	715a      	strb	r2, [r3, #5]
 
 
 	uint8_t rx[SPI_RX_BUFFER_SIZE];
