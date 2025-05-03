@@ -5,7 +5,7 @@
 
 ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, uint32_t max_wait);
 
-#define SPI_RX_BUFFER_SIZE 128*4//128
+#define SPI_RX_BUFFER_SIZE 64//128
 
 static void cs_low(NeoGPSConfig_t *config) {
 	HAL_GPIO_WritePin(config->cs_pin_port, config->cs_pin, GPIO_PIN_RESET);
@@ -157,15 +157,17 @@ ublox_status_e sendSPICommand(NeoGPSConfig_t *config, UBX_Packet_t *outgoing, ui
 	}
 	HAL_Delay(1000);
 	debug_print("Set payload.\r\n");
+
+	HAL_Delay(1000);
+	debug_print("Created tx buffer, calculating checksum:\r\n");
+	//calculate the checksum
+	calculateChecksum(outgoing, tx, tx_size-UBX_PACKET_FOOTER_SIZE); //subtract footer because we do not include checksums in calculation
 	int footer_start = UBX_PACKET_HEADER_SIZE + outgoing->length;
 
 	tx[footer_start] = outgoing->checksumA;
 	tx[footer_start + 1] = outgoing->checksumB;
 
-	HAL_Delay(1000);
-	debug_print("Created tx buffer, calculating checksum:\r\n");
-	//calculate the checksum
-	calculateChecksum(outgoing, tx, tx_size);
+
 	HAL_Delay(1000);
 	debug_print("Calculated checksum, filling end of tx and beginning of rx...\r\n");
 	HAL_Delay(500);
@@ -276,42 +278,51 @@ void test_poll(NeoGPSConfig_t *config, uint32_t max_wait) {
 
 	uint8_t tx[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF};
 
-	tx[0] = UBX_PSYNC_1;
-	tx[1] = UBX_PSYNC_2;
+	//tx[0] = UBX_PSYNC_1;
+	//tx[1] = UBX_PSYNC_2;
 
-	tx[2] = UBX_CLASS_CFG;
-	tx[3] = UBX_CFG_PRT;
-	tx[4] = 1 & 0xFF; //LSB OF LENGTH,
-	tx[5] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
+	//tx[2] = UBX_CLASS_CFG;
+	//tx[3] = UBX_CFG_PRT;
+	//tx[4] = 1 & 0xFF; //LSB OF LENGTH,
+	//tx[5] = 1 >> 8;   //MSB OF LENGTH. LENGTH IS LSB FIRST PER DATASHEET
+
+	//tx[6] = PORT_ID_SPI; //PAYLOAD
+
+	//UBX_Packet_t outgoing;
+	//int footer_start = UBX_PACKET_HEADER_SIZE + 1;
+
+	//calculateChecksum(&outgoing, tx, UBX_PACKET_HEADER_SIZE+1); //subtract footer because we do not include checksums in calculation
 
 
+	//tx[footer_start] = outgoing.checksumA;
+	//tx[footer_start + 1] = outgoing.checksumB;
 
-	uint8_t rx[SPI_RX_BUFFER_SIZE];
+	uint8_t rx[SPI_RX_BUFFER_SIZE] = {[0 ... SPI_RX_BUFFER_SIZE-1] = 0xFF};
 
 	while(1) {
 		debug_print("POLLING...");
 		cs_low(config);
 		HAL_SPI_TransmitReceive(config->spi_port, tx, rx, SPI_RX_BUFFER_SIZE, max_wait);
 		cs_high(config);
-		HAL_Delay(100);
+		HAL_Delay(10);
 		debug_print("Transaction done.\r\n");
-		HAL_Delay(100);
+		HAL_Delay(10);
 		debug_print("Debug printing rx and tx buffers:\r\n");
-		HAL_Delay(100);
+		HAL_Delay(10);
 		debug_print("TX: ");
 		for(int i = 0; i < SPI_RX_BUFFER_SIZE; i++) {
 			HAL_Delay(10);
 			debug_print(" |%02x| ", tx[i]);
 		}
-		HAL_Delay(100);
+		HAL_Delay(10);
 		debug_print("\r\nRX: ");
 		for(int i = 0; i < SPI_RX_BUFFER_SIZE; i++) {
 			HAL_Delay(10);
 			debug_print(" |%02x| ", rx[i]);
 		}
-		HAL_Delay(100);
-		debug_print("\r\nDone. Waiting 5 seconds...\r\n");
-		HAL_Delay(5000);
+		HAL_Delay(10);
+		debug_print("\r\nDone. Waiting 1 0 ms...\r\n");
+		HAL_Delay(10);
 	}
 }
 
