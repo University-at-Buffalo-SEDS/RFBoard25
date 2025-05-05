@@ -18,10 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "usbd_cdc_if.h"
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +34,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define PRINT_BUFFER_SIZE 256
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,15 +45,17 @@
 /* Private variables ---------------------------------------------------------*/
 FDCAN_HandleTypeDef hfdcan2;
 
-I2C_HandleTypeDef hi2c3;
-
 SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart1;
-UART_HandleTypeDef huart2;
 
-PCD_HandleTypeDef hpcd_USB_FS;
-
+/* Definitions for readData */
+osThreadId_t readDataHandle;
+const osThreadAttr_t readData_attributes = {
+  .name = "readData",
+  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 512 * 4
+};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -61,11 +66,24 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_FDCAN2_Init(void);
-static void MX_I2C3_Init(void);
-static void MX_USART2_UART_Init(void);
-static void MX_USB_PCD_Init(void);
-/* USER CODE BEGIN PFP */
+void StartReadData(void *argument);
 
+/* USER CODE BEGIN PFP */
+void CDC_Transmit_Print(const char *format, ...)
+{
+    char buf[PRINT_BUFFER_SIZE];
+    va_list  args;
+    va_start(args, format);
+    int len = vsnprintf(buf, sizeof(buf), format, args);
+    va_end(args);
+    if (len <= 0) {
+        return;
+    }
+    if (len > (PRINT_BUFFER_SIZE - 1)) {
+        len = PRINT_BUFFER_SIZE - 1;
+    }
+    CDC_Transmit_FS((uint8_t*)buf, (uint16_t)len);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -105,12 +123,60 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   MX_FDCAN2_Init();
-  MX_I2C3_Init();
-  MX_USART2_UART_Init();
-  MX_USB_PCD_Init();
+  HAL_GPIO_WritePin(LED_POWER_GPIO_Port, LED_POWER_Pin, GPIO_PIN_SET);
   /* USER CODE BEGIN 2 */
-
+  FDCAN_FilterTypeDef rxFilter = {
+      .IdType       = FDCAN_STANDARD_ID,
+      .FilterIndex  = 0,
+      .FilterType   = FDCAN_FILTER_MASK,
+      .FilterConfig = FDCAN_FILTER_TO_RXFIFO0,
+      .FilterID1    = 0x111,
+      .FilterID2    = 0x7FF
+  };
+  if (HAL_FDCAN_ConfigFilter(&hfdcan2, &rxFilter) != HAL_OK) {
+      Error_Handler();
+  }
+  // Start CAN
+  if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK) {
+      Error_Handler();
+  }
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of readData */
+  readDataHandle = osThreadNew(StartReadData, NULL, &readData_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -181,21 +247,21 @@ static void MX_FDCAN2_Init(void)
   /* USER CODE END FDCAN2_Init 1 */
   hfdcan2.Instance = FDCAN2;
   hfdcan2.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-  hfdcan2.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+  hfdcan2.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
   hfdcan2.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan2.Init.AutoRetransmission = DISABLE;
   hfdcan2.Init.TransmitPause = DISABLE;
   hfdcan2.Init.ProtocolException = DISABLE;
-  hfdcan2.Init.NominalPrescaler = 16;
+  hfdcan2.Init.NominalPrescaler = 1;
   hfdcan2.Init.NominalSyncJumpWidth = 1;
-  hfdcan2.Init.NominalTimeSeg1 = 1;
-  hfdcan2.Init.NominalTimeSeg2 = 1;
+  hfdcan2.Init.NominalTimeSeg1 = 63;
+  hfdcan2.Init.NominalTimeSeg2 = 16;
   hfdcan2.Init.DataPrescaler = 1;
-  hfdcan2.Init.DataSyncJumpWidth = 1;
-  hfdcan2.Init.DataTimeSeg1 = 1;
-  hfdcan2.Init.DataTimeSeg2 = 1;
-  hfdcan2.Init.StdFiltersNbr = 0;
-  hfdcan2.Init.ExtFiltersNbr = 0;
+  hfdcan2.Init.DataSyncJumpWidth = 4;
+  hfdcan2.Init.DataTimeSeg1 = 13;
+  hfdcan2.Init.DataTimeSeg2 = 2;
+  hfdcan2.Init.StdFiltersNbr = 1;
+  hfdcan2.Init.ExtFiltersNbr = 1;
   hfdcan2.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
   if (HAL_FDCAN_Init(&hfdcan2) != HAL_OK)
   {
@@ -204,54 +270,6 @@ static void MX_FDCAN2_Init(void)
   /* USER CODE BEGIN FDCAN2_Init 2 */
 
   /* USER CODE END FDCAN2_Init 2 */
-
-}
-
-/**
-  * @brief I2C3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C3_Init(void)
-{
-
-  /* USER CODE BEGIN I2C3_Init 0 */
-
-  /* USER CODE END I2C3_Init 0 */
-
-  /* USER CODE BEGIN I2C3_Init 1 */
-
-  /* USER CODE END I2C3_Init 1 */
-  hi2c3.Instance = I2C3;
-  hi2c3.Init.Timing = 0x00503D58;
-  hi2c3.Init.OwnAddress1 = 0;
-  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c3.Init.OwnAddress2 = 0;
-  hi2c3.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c3, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c3, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C3_Init 2 */
-
-  /* USER CODE END I2C3_Init 2 */
 
 }
 
@@ -344,87 +362,6 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart2, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
-  * @brief USB Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USB_PCD_Init(void)
-{
-
-  /* USER CODE BEGIN USB_Init 0 */
-
-  /* USER CODE END USB_Init 0 */
-
-  /* USER CODE BEGIN USB_Init 1 */
-
-  /* USER CODE END USB_Init 1 */
-  hpcd_USB_FS.Instance = USB;
-  hpcd_USB_FS.Init.dev_endpoints = 8;
-  hpcd_USB_FS.Init.speed = PCD_SPEED_FULL;
-  hpcd_USB_FS.Init.phy_itface = PCD_PHY_EMBEDDED;
-  hpcd_USB_FS.Init.Sof_enable = DISABLE;
-  hpcd_USB_FS.Init.low_power_enable = DISABLE;
-  hpcd_USB_FS.Init.lpm_enable = DISABLE;
-  hpcd_USB_FS.Init.battery_charging_enable = DISABLE;
-  if (HAL_PCD_Init(&hpcd_USB_FS) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USB_Init 2 */
-
-  /* USER CODE END USB_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -461,6 +398,57 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartReadData */
+/**
+  * @brief  Function implementing the readData thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartReadData */
+void StartReadData(void *argument)
+{
+    FDCAN_RxHeaderTypeDef rxHeader;
+    uint8_t rxData[16];
+    MX_USB_Device_Init();
+
+    for (;;) {
+        /* Poll for new CAN frames */
+        uint32_t fill = HAL_FDCAN_GetRxFifoFillLevel(&hfdcan2, FDCAN_RX_FIFO0);
+        if (fill > 0) {
+            if (HAL_FDCAN_GetRxMessage(&hfdcan2, FDCAN_RX_FIFO0, &rxHeader, rxData) == HAL_OK) {
+                if (rxHeader.Identifier == 0x111 && rxHeader.DataLength == FDCAN_DLC_BYTES_16) {
+                    float *v = (float *)rxData;
+                    CDC_Transmit_Print("Voltages: %.3f, %.3f, %.3f, %.3f\r\n",
+                                      v[0], v[1], v[2], v[3]);
+                }
+            }
+        }
+        osDelay(50);
+    }
+}
+
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM1 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM1) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
