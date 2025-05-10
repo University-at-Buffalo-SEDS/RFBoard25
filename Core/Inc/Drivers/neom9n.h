@@ -16,6 +16,11 @@
 //INTERFACE DESCRIPTION:
 //https://content.u-blox.com/sites/default/files/u-blox-M9-SPG-4.04_InterfaceDescription_UBX-21022436.pdf?utm_content=UBX-21022436
 
+#define NMEA_PAYLOAD_IGNORE_TIMEOUT 500
+
+#define MAX_NMEA_IGNORES 500
+#define NMEA_PAYLOAD_SIZE 256
+
 //sync characters
 #define UBX_PSYNC_1  	0xB5 //Preamble sync char 1
 #define UBX_PSYNC_2  	0x62 //Preamble sync char 2
@@ -106,6 +111,12 @@ typedef struct UBX_Packet_t {
 	uint8_t checksumB;
 	//uint8_t
 } UBX_Packet_t;
+
+typedef struct NMEA_Frame_t {
+	uint8_t talker_id[2];
+	uint8_t  sentence_format[3];
+	uint8_t *payload;
+} NMEA_Frame_t;
 
 typedef enum incoming_packet_type_e {
 	INCOMING_TYPE_NONE = 0,
